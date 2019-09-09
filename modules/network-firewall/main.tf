@@ -7,6 +7,10 @@ data "google_compute_subnetwork" "public_subnetwork" {
   self_link = var.public_subnetwork
 }
 
+data "google_compute_subnetwork" "public_restricted_subnetwork" {
+  self_link = var.public_subnetwork
+}
+
 data "google_compute_subnetwork" "private_subnetwork" {
   self_link = var.private_subnetwork
 }
@@ -24,6 +28,9 @@ locals {
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "google_compute_firewall" "public_allow_restricted_inbound" {
+
+  count = "${length(var.allowed_public_restricted_subnetworks) > 0 ? 1 : 0}"
+  
   name = "${var.name_prefix}-public-allow-restricted-ingress"
 
   project = var.project
@@ -81,6 +88,8 @@ resource "google_compute_firewall" "private_allow_all_network_inbound" {
   source_ranges = [
     data.google_compute_subnetwork.public_subnetwork.ip_cidr_range,
     data.google_compute_subnetwork.public_subnetwork.secondary_ip_range[0].ip_cidr_range,
+    data.google_compute_subnetwork.public_subnetwork_restricted.ip_cidr_range,
+    data.google_compute_subnetwork.public_subnetwork_restricted.secondary_ip_range[0].ip_cidr_range,
     data.google_compute_subnetwork.private_subnetwork.ip_cidr_range,
     data.google_compute_subnetwork.private_subnetwork.secondary_ip_range[0].ip_cidr_range,
   ]

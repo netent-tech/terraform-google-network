@@ -74,6 +74,58 @@ resource "google_compute_router_nat" "vpc_nat" {
   }
 }
 
+# ----------------------------------------------------------------------------------------------------------------------------------
+# Public Restricted Subnetwork Config
+# Public restricted internet access for instances with addresses is automatically configured by the default gateway for 0.0.0.0/0
+# External access is configured with Cloud NAT, which subsumes egress traffic for instances without external addresses
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+resource "google_compute_subnetwork" "vpc_subnetwork_public_restricted" {
+  name = "${var.name_prefix}-subnetwork-public-restricted"
+
+  project = var.project
+  region  = var.region
+  network = google_compute_network.vpc.self_link
+
+  private_ip_google_access = true
+  ip_cidr_range = cidrsubnet(
+    var.cidr_block,
+    var.cidr_subnetwork_width_delta,
+    1 * (1 + var.cidr_subnetwork_spacing)
+  )
+
+  secondary_ip_range {
+    range_name = "public-restricted-services"
+    ip_cidr_range = cidrsubnet(
+      var.secondary_cidr_block,
+      var.secondary_cidr_subnetwork_width_delta,
+      1 * (1 + var.secondary_cidr_subnetwork_spacing)
+    )
+  }
+
+  enable_flow_logs = var.enable_flow_logging
+}
+
+resource "google_compute_router_nat" "vpc_nat" {
+  name = "${var.name_prefix}-public-restricted-nat"
+
+  project = var.project
+  region  = var.region
+  router  = google_compute_router.vpc_router.name
+
+  nat_ip_allocate_option = "AUTO_ONLY"
+
+  # "Manually" define the subnetworks for which the NAT is used, so that we can exclude the public subnetwork
+  source_subnetwork_ip_ranges_to_nat = "LIST_OF_SUBNETWORKS"
+
+  subnetwork {
+    name                    = google_compute_subnetwork.vpc_subnetwork_public_restricted.self_link
+    source_ip_ranges_to_nat = ["ALL_IP_RANGES"]
+  }
+}
+
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Private Subnetwork Config
 # ---------------------------------------------------------------------------------------------------------------------
@@ -89,7 +141,7 @@ resource "google_compute_subnetwork" "vpc_subnetwork_private" {
   ip_cidr_range = cidrsubnet(
     var.cidr_block,
     var.cidr_subnetwork_width_delta,
-    1 * (1 + var.cidr_subnetwork_spacing)
+    1 * (2 + var.cidr_subnetwork_spacing)
   )
 
   secondary_ip_range {
@@ -97,7 +149,7 @@ resource "google_compute_subnetwork" "vpc_subnetwork_private" {
     ip_cidr_range = cidrsubnet(
       var.secondary_cidr_block,
       var.secondary_cidr_subnetwork_width_delta,
-      1 * (1 + var.secondary_cidr_subnetwork_spacing)
+      1 * (2 + var.secondary_cidr_subnetwork_spacing)
     )
   }
 
@@ -118,6 +170,6 @@ module "network_firewall" {
   allowed_public_restricted_subnetworks = var.allowed_public_restricted_subnetworks
 
   public_subnetwork  = google_compute_subnetwork.vpc_subnetwork_public.self_link
+  public_restricted_subnetwork = google_compute_subnetwork.vpc_subnetwork_public_restricted.self_link
   private_subnetwork = google_compute_subnetwork.vpc_subnetwork_private.self_link
 }
-
